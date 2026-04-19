@@ -91,6 +91,30 @@ describe('notifications service', () => {
       expect(result).toBeNull();
       expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
     });
+
+    it('should not include subtitle if description is empty', async () => {
+      const task: Task = {
+        id: '1',
+        title: 'No Description Task',
+        description: '',
+        dueDate: '2026-12-31',
+        startTime: '10:00',
+        endTime: null,
+        priority: Priority.MEDIUM,
+        completed: false,
+        completedAt: null,
+        recurrence: Recurrence.NONE,
+        parentTaskId: null,
+        reminder: { enabled: true, minutesBefore: 15, repeating: false },
+        createdAt: '',
+        notificationId: null,
+      };
+
+      await scheduleTaskReminder(task);
+      
+      const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+      expect(call.content.subtitle).toBeUndefined();
+    });
   });
 
   describe('cancelTaskReminder', () => {

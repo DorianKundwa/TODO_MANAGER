@@ -88,7 +88,7 @@ export async function scheduleTaskReminder(task: Task): Promise<string | null> {
       content: {
         title: '📋 Task Reminder',
         body: task.title,
-        subtitle: task.description || undefined,
+        ...(task.description?.trim() ? { subtitle: task.description } : {}),
         data: { taskId: task.id },
         sound: true,
       },

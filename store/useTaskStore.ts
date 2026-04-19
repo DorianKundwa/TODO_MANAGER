@@ -12,6 +12,8 @@ import { isToday, isFuture } from '../utils/dateHelpers';
 import { generateId } from '../utils/idGenerator';
 import { processRecurringTasks } from '../services/recurringTasks';
 import { scheduleTaskReminder, cancelTaskReminder } from '../services/notifications';
+import { DatabaseService } from '../services/database/DatabaseService';
+import { SyncEngine } from '../services/SyncEngine';
 
 interface TaskStore {
   // ── State ──────────────────────────────────────────────
@@ -20,18 +22,22 @@ interface TaskStore {
   searchQuery: string;
   darkMode: boolean;
   hasLoadedInitially: boolean;
+  syncing: boolean;
+  lastError: string | null;
 
   // ── Actions ────────────────────────────────────────────
-  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'completed' | 'completedAt' | 'notificationId'>) => void;
-  updateTask: (id: string, updates: Partial<Task>) => void;
-  deleteTask: (id: string) => void;
-  toggleComplete: (id: string) => void;
+  initStore: () => Promise<void>;
+  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'completed' | 'completedAt' | 'notificationId'>) => Promise<void>;
+  updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
+  toggleComplete: (id: string) => Promise<void>;
   setFilter: (filter: FilterType) => void;
   setSearchQuery: (query: string) => void;
   toggleDarkMode: () => void;
-  clearCompleted: () => void;
-  processRecurring: () => void;
+  clearCompleted: () => Promise<void>;
+  processRecurring: () => Promise<void>;
   setHasLoaded: () => void;
+  syncData: () => Promise<void>;
 
   // ── Computed (selectors) ───────────────────────────────
   getFilteredTasks: () => Task[];
@@ -50,11 +56,24 @@ export const useTaskStore = create<TaskStore>()(
       searchQuery: '',
       darkMode: true, // Default to dark mode for that sleek feel
       hasLoadedInitially: false,
+      syncing: false,
+      lastError: null,
 
       // ── Actions ──────────────────────────────────────────
 
+      /** Load initial data from SQLite */
+      initStore: async () => {
+        try {
+          const db = await DatabaseService.getInstance();
+          const tasks = await db.getAllTasks();
+          set({ tasks, hasLoadedInitially: true });
+        } catch (error) {
+          console.error('[Store] Failed to init store:', error);
+        }
+      },
+
       /** Add a new task with auto-generated id and timestamps */
-      addTask: (taskData) => {
+      addTask: async (taskData) => {
         const newTask: Task = {
           ...taskData,
           id: generateId(),
@@ -64,88 +83,146 @@ export const useTaskStore = create<TaskStore>()(
           notificationId: null,
         };
 
+        // Optimistic update
         set((state) => ({ tasks: [newTask, ...state.tasks] }));
 
-        // Schedule notification if reminder is enabled
-        if (newTask.reminder.enabled) {
-          scheduleTaskReminder(newTask).then((notifId) => {
+        try {
+          const db = await DatabaseService.getInstance();
+          
+          // Schedule notification if reminder is enabled
+          if (newTask.reminder.enabled) {
+            const notifId = await scheduleTaskReminder(newTask);
             if (notifId) {
+              newTask.notificationId = notifId;
               set((state) => ({
                 tasks: state.tasks.map((t) =>
                   t.id === newTask.id ? { ...t, notificationId: notifId } : t
                 ),
               }));
             }
-          });
+          }
+
+          await db.saveTask(newTask, 'pending_create');
+          await db.addToSyncQueue('create', newTask.id, newTask);
+          
+          // Trigger background sync
+          get().syncData();
+        } catch (error) {
+          set({ lastError: 'Failed to add task' });
+          // Rollback
+          set((state) => ({ tasks: state.tasks.filter(t => t.id !== newTask.id) }));
         }
       },
 
       /** Update specific fields on an existing task */
-      updateTask: (id, updates) => {
-        const task = get().tasks.find((t) => t.id === id);
-        if (!task) return;
+      updateTask: async (id, updates) => {
+        const originalTask = get().tasks.find((t) => t.id === id);
+        if (!originalTask) return;
 
-        // Cancel old notification if reminder changed
-        if (updates.reminder !== undefined || updates.dueDate !== undefined || updates.startTime !== undefined) {
-          cancelTaskReminder(task.notificationId);
-        }
-
+        // Optimistic update
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === id ? { ...t, ...updates } : t
           ),
         }));
 
-        // Reschedule notification if needed
-        const updatedTask = { ...task, ...updates };
-        if (updatedTask.reminder.enabled && !updatedTask.completed) {
-          scheduleTaskReminder(updatedTask).then((notifId) => {
+        try {
+          const db = await DatabaseService.getInstance();
+          
+          // Cancel old notification if reminder changed
+          if (updates.reminder !== undefined || updates.dueDate !== undefined || updates.startTime !== undefined) {
+            await cancelTaskReminder(originalTask.notificationId);
+          }
+
+          // Reschedule notification if needed
+          const updatedTask = { ...originalTask, ...updates };
+          if (updatedTask.reminder.enabled && !updatedTask.completed) {
+            const notifId = await scheduleTaskReminder(updatedTask);
             if (notifId) {
+              updatedTask.notificationId = notifId;
               set((state) => ({
                 tasks: state.tasks.map((t) =>
                   t.id === id ? { ...t, notificationId: notifId } : t
                 ),
               }));
             }
-          });
+          }
+
+          await db.saveTask(updatedTask, 'pending_update');
+          await db.addToSyncQueue('update', id, updates);
+          get().syncData();
+        } catch (error) {
+          set({ lastError: 'Failed to update task' });
+          // Rollback
+          set((state) => ({
+            tasks: state.tasks.map(t => t.id === id ? originalTask : t)
+          }));
         }
       },
 
       /** Delete a task and cancel its notification */
-      deleteTask: (id) => {
+      deleteTask: async (id) => {
         const task = get().tasks.find((t) => t.id === id);
-        if (task?.notificationId) {
-          cancelTaskReminder(task.notificationId);
-        }
+        if (!task) return;
+
+        // Optimistic delete
         set((state) => ({
           tasks: state.tasks.filter((t) => t.id !== id),
         }));
+
+        try {
+          const db = await DatabaseService.getInstance();
+          if (task.notificationId) {
+            await cancelTaskReminder(task.notificationId);
+          }
+          await db.deleteTask(id);
+          await db.addToSyncQueue('delete', id);
+          get().syncData();
+        } catch (error) {
+          set({ lastError: 'Failed to delete task' });
+          // Rollback
+          set((state) => ({ tasks: [...state.tasks, task] }));
+        }
       },
 
       /** Toggle a task's completion status */
-      toggleComplete: (id) => {
-        let shouldProcessRecurring = false;
-        
-        set((state) => {
-          const updatedTasks = state.tasks.map((t) => {
+      toggleComplete: async (id) => {
+        const task = get().tasks.find((t) => t.id === id);
+        if (!task) return;
+
+        const originalCompleted = task.completed;
+        const newCompleted = !originalCompleted;
+
+        // Optimistic toggle
+        set((state) => ({
+          tasks: state.tasks.map((t) => {
             if (t.id !== id) return t;
-            const completed = !t.completed;
-            if (completed && t.recurrence !== Recurrence.NONE) {
-              shouldProcessRecurring = true;
-            }
             return {
               ...t,
-              completed,
-              completedAt: completed ? new Date().toISOString() : null,
+              completed: newCompleted,
+              completedAt: newCompleted ? new Date().toISOString() : null,
             };
-          });
-          
-          return { tasks: updatedTasks };
-        });
+          }),
+        }));
 
-        // Process recurring tasks after completion if needed
-        if (shouldProcessRecurring) {
-          get().processRecurring();
+        try {
+          const db = await DatabaseService.getInstance();
+          const updatedTask = get().tasks.find(t => t.id === id)!;
+          
+          await db.saveTask(updatedTask, 'pending_update');
+          await db.addToSyncQueue('update', id, { completed: newCompleted, completedAt: updatedTask.completedAt });
+
+          if (newCompleted && updatedTask.recurrence !== Recurrence.NONE) {
+            await get().processRecurring();
+          }
+          
+          get().syncData();
+        } catch (error) {
+          set({ lastError: 'Failed to toggle status' });
+          // Rollback
+          set((state) => ({
+            tasks: state.tasks.map(t => t.id === id ? task : t)
+          }));
         }
       },
 
@@ -159,36 +236,73 @@ export const useTaskStore = create<TaskStore>()(
       toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
 
       /** Remove all completed tasks */
-      clearCompleted: () => {
+      clearCompleted: async () => {
         const completedTasks = get().tasks.filter((t) => t.completed);
-        completedTasks.forEach((t) => {
-          if (t.notificationId) cancelTaskReminder(t.notificationId);
-        });
+        
+        // Optimistic update
         set((state) => ({
           tasks: state.tasks.filter((t) => !t.completed),
         }));
+
+        try {
+          const db = await DatabaseService.getInstance();
+          for (const t of completedTasks) {
+            if (t.notificationId) await cancelTaskReminder(t.notificationId);
+            await db.deleteTask(t.id);
+            await db.addToSyncQueue('delete', t.id);
+          }
+          get().syncData();
+        } catch (error) {
+          set({ lastError: 'Failed to clear completed' });
+          set((state) => ({ tasks: [...state.tasks, ...completedTasks] }));
+        }
       },
 
       /** Generate new instances of completed recurring tasks */
-      processRecurring: () => {
+      processRecurring: async () => {
         const { tasks } = get();
         const newTasks = processRecurringTasks(tasks);
+        
         if (newTasks.length > 0) {
-          // Schedule notifications for new recurring tasks
-          // We do this first to avoid nested set calls if possible
-          Promise.all(
-            newTasks.map(async (task) => {
-              if (task.reminder.enabled) {
-                const notifId = await scheduleTaskReminder(task);
-                return { ...task, notificationId: notifId };
-              }
-              return task;
-            })
-          ).then((tasksWithNotifs) => {
+          try {
+            const db = await DatabaseService.getInstance();
+            
+            // Schedule notifications and save to DB
+            const tasksWithNotifs = await Promise.all(
+              newTasks.map(async (task) => {
+                let notifId = null;
+                if (task.reminder.enabled) {
+                  notifId = await scheduleTaskReminder(task);
+                }
+                const taskToSave = { ...task, notificationId: notifId };
+                await db.saveTask(taskToSave, 'pending_create');
+                await db.addToSyncQueue('create', task.id, taskToSave);
+                return taskToSave;
+              })
+            );
+
             set((state) => ({
               tasks: [...tasksWithNotifs, ...state.tasks],
             }));
-          });
+            
+            get().syncData();
+          } catch (error) {
+            console.error('[Store] Failed to process recurring:', error);
+          }
+        }
+      },
+
+      /** Sync data using the SyncEngine */
+      syncData: async () => {
+        set({ syncing: true });
+        try {
+          await SyncEngine.getInstance().sync();
+          // Reload from DB after sync to get server changes
+          const db = await DatabaseService.getInstance();
+          const tasks = await db.getAllTasks();
+          set({ tasks });
+        } finally {
+          set({ syncing: false });
         }
       },
 
@@ -253,38 +367,37 @@ export const useTaskStore = create<TaskStore>()(
         };
       },
 
-      /** Get all tasks for a specific date */
-      getTasksByDate: (date: string) => {
-        return get().tasks.filter((t) => t.dueDate === date);
-      },
-
-      /** Find a single task by ID */
-      getTaskById: (id: string) => {
-        return get().tasks.find((t) => t.id === id);
-      },
-
-      /** Generate marked dates object for react-native-calendars */
-      getMarkedDates: () => {
+      /** Get tasks for a specific date */
+      getTasksByDate: (date) => {
         const { tasks } = get();
+        return tasks.filter((t) => t.dueDate === date);
+      },
+
+      /** Find a task by its unique ID */
+      getTaskById: (id) => {
+        const { tasks } = get();
+        return tasks.find((t) => t.id === id);
+      },
+
+      /** Get an object of dates with task counts for calendar marking */
+      getMarkedDates: () => {
+        const { tasks, darkMode } = get();
         const marked: Record<string, any> = {};
 
         tasks.forEach((task) => {
           if (!marked[task.dueDate]) {
-            marked[task.dueDate] = { dots: [], marked: true };
+            marked[task.dueDate] = { dots: [] };
           }
 
-          const priorityColors: Record<string, string> = {
-            high: '#F43F5E',
-            medium: '#FBBF24',
-            low: '#2DD4BF',
-          };
-
-          // Add a dot for this task's priority (max 3 dots per date)
+          // Add a dot for each task, max 3 dots
           if (marked[task.dueDate].dots.length < 3) {
-            marked[task.dueDate].dots.push({
-              key: task.id,
-              color: task.completed ? '#6B6B85' : priorityColors[task.priority],
-            });
+            const dotColor = {
+              high: darkMode ? '#FF5252' : '#D32F2F',
+              medium: darkMode ? '#FFD740' : '#F57C00',
+              low: darkMode ? '#69F0AE' : '#388E3C',
+            }[task.priority];
+
+            marked[task.dueDate].dots.push({ key: task.id, color: dotColor });
           }
         });
 
@@ -292,12 +405,12 @@ export const useTaskStore = create<TaskStore>()(
       },
     }),
     {
-      name: '@taskflow/store',
+      name: 'taskflow-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      // Only persist these fields (not UI state like filter/search)
-      partialize: (state) => ({
-        tasks: state.tasks,
-        darkMode: state.darkMode,
+      // Only persist UI preferences, data is in SQLite
+      partialize: (state) => ({ 
+        darkMode: state.darkMode, 
+        filter: state.filter 
       }),
     }
   )

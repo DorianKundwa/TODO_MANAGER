@@ -11,6 +11,7 @@ import TaskList from '../components/TaskList';
 import FloatingActionButton from '../components/FloatingActionButton';
 import ProgressRing from '../components/ProgressRing';
 import SearchBar from '../components/SearchBar';
+import { ActivityIndicator } from 'react-native';
 import { useTaskStore } from '../store/useTaskStore';
 import { lightColors, darkColors } from '../theme/colors';
 import { getGreeting, getToday, getDayOfWeek, formatDate } from '../utils/dateHelpers';
@@ -19,7 +20,7 @@ import { Task } from '../types/task';
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { darkMode, getFilteredTasks, getTodayStats, tasks, filter, searchQuery } = useTaskStore();
+  const { darkMode, getFilteredTasks, getTodayStats, tasks, filter, searchQuery, syncing } = useTaskStore();
   const colors = darkMode ? darkColors : lightColors;
 
   const filteredTasks = useMemo(() => getFilteredTasks(), [tasks, filter, searchQuery]);
@@ -42,9 +43,14 @@ export default function HomeScreen() {
       {/* Greeting section */}
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.greetingSection}>
-          <Text style={[styles.greeting, { color: colors.textSecondary }]}>
-            {getGreeting()} 👋
-          </Text>
+          <View style={styles.greetingRow}>
+            <Text style={[styles.greeting, { color: colors.textSecondary }]}>
+              {getGreeting()} 👋
+            </Text>
+            {syncing && (
+              <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 10 }} />
+            )}
+          </View>
           <Text style={[styles.dateText, { color: colors.textMuted }]}>
             {getDayOfWeek(today)}, {formatDate(today)}
           </Text>
@@ -119,6 +125,10 @@ const styles = StyleSheet.create({
   },
   greetingSection: {
     flex: 1,
+  },
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   greeting: {
     fontSize: 28,

@@ -14,6 +14,53 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
+// Mock expo-sqlite
+jest.mock('expo-sqlite', () => ({
+  openDatabaseAsync: jest.fn().mockResolvedValue({
+    execAsync: jest.fn().mockResolvedValue(undefined),
+    runAsync: jest.fn().mockResolvedValue({ lastInsertRowId: 1, changes: 1 }),
+    getAllAsync: jest.fn().mockResolvedValue([]),
+    getFirstAsync: jest.fn().mockResolvedValue(null),
+  }),
+}));
+
+// Mock expo-secure-store
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn().mockResolvedValue('mock-key'),
+  setItemAsync: jest.fn().mockResolvedValue(undefined),
+}));
+
+// Mock expo-crypto
+jest.mock('expo-crypto', () => ({
+  digestStringAsync: jest.fn().mockResolvedValue('mock-digest'),
+  CryptoDigestAlgorithm: {
+    SHA256: 'SHA-256',
+  },
+}));
+
+// Mock @react-native-community/netinfo
+jest.mock('@react-native-community/netinfo', () => ({
+  fetch: jest.fn().mockResolvedValue({ isConnected: true }),
+  addEventListener: jest.fn().mockReturnValue(() => {}),
+}));
+
+// Mock expo-task-manager
+jest.mock('expo-task-manager', () => ({
+  defineTask: jest.fn(),
+  isTaskRegisteredAsync: jest.fn().mockResolvedValue(false),
+}));
+
+// Mock expo-background-fetch
+jest.mock('expo-background-fetch', () => ({
+  registerTaskAsync: jest.fn(),
+  unregisterTaskAsync: jest.fn(),
+  BackgroundFetchResult: {
+    NewData: 1,
+    NoData: 2,
+    Failed: 3,
+  },
+}));
+
 // Mock expo-notifications
 jest.mock('expo-notifications', () => ({
   scheduleNotificationAsync: jest.fn().mockResolvedValue('mock-notif-id'),

@@ -12,32 +12,42 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
 import { lightColors, darkColors } from '../theme/colors';
 import { requestNotificationPermissions } from '../services/notifications';
+import { BackgroundService } from '../services/BackgroundService';
+import { SyncEngine } from '../services/SyncEngine';
 
 export default function RootLayout() {
-  const { darkMode, processRecurring, setHasLoaded } = useTaskStore();
+  const { darkMode, processRecurring, setHasLoaded, initStore, syncData } = useTaskStore();
   const colors = darkMode ? darkColors : lightColors;
 
   useEffect(() => {
+    // Initialize background services
+    BackgroundService.getInstance().init();
+
+    // Load data from SQLite
+    initStore();
+
     // Request notification permissions on first launch
     requestNotificationPermissions();
 
     // Mark store as loaded
     setHasLoaded();
 
-    // Process recurring tasks when app comes to foreground
+    // Process recurring tasks and sync when app comes to foreground
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         processRecurring();
+        syncData();
       }
     });
 
-    // Process on initial mount too
+    // Initial process and sync
     processRecurring();
+    syncData();
 
     return () => {
       subscription.remove();
     };
-  }, [processRecurring, setHasLoaded]);
+  }, [processRecurring, setHasLoaded, syncData]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

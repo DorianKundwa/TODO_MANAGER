@@ -33,6 +33,7 @@ jest.mock('expo-secure-store', () => ({
 // Mock expo-crypto
 jest.mock('expo-crypto', () => ({
   digestStringAsync: jest.fn().mockResolvedValue('mock-digest'),
+  getRandomBytesAsync: jest.fn().mockResolvedValue(new Uint8Array(32).fill(0)),
   CryptoDigestAlgorithm: {
     SHA256: 'SHA-256',
   },
@@ -88,4 +89,11 @@ jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(),
   notificationAsync: jest.fn(),
   selectionAsync: jest.fn(),
+}));
+
+// Mock @expo/vector-icons
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: 'Ionicons',
+  MaterialIcons: 'MaterialIcons',
+  FontAwesome: 'FontAwesome',
 }));

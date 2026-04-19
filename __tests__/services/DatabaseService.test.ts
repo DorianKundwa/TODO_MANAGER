@@ -53,16 +53,28 @@ describe('DatabaseService', () => {
     await db.saveTask(task, 'pending_create');
     expect(dbMock.runAsync).toHaveBeenCalledWith(
       expect.stringContaining('INSERT OR REPLACE INTO tasks'),
-      expect.arrayContaining(['task-1', 'Test Task', 'Desc', '2026-04-19', 'high', 0, 'pending_create'])
+      expect.arrayContaining([
+        'task-1', 
+        expect.any(String), // encrypted title
+        expect.any(String), // encrypted description
+        '2026-04-19', 
+        'high', 
+        0, 
+        'pending_create'
+      ])
     );
+    
+    // Verify number of arguments
+    const lastCall = dbMock.runAsync.mock.calls[dbMock.runAsync.mock.calls.length - 1];
+    expect(lastCall[1].length).toBe(19);
   });
 
   it('should delete a task (soft delete by default)', async () => {
     const db = await DatabaseService.getInstance();
     await db.deleteTask('task-1');
     expect(dbMock.runAsync).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE tasks SET syncStatus = "pending_delete"'),
-      expect.arrayContaining(['task-1'])
+      expect.stringContaining('UPDATE tasks SET syncStatus = "pending_delete", updatedAt = ? WHERE id = ?'),
+      expect.arrayContaining([expect.any(String), 'task-1'])
     );
   });
 

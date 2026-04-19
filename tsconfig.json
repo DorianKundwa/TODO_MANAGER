@@ -2,13 +2,18 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "esModuleInterop": true,
+    "jsx": "react-native",
+    "lib": ["es2017"],
+    "target": "es2017",
     "paths": {
       "@/*": [
         "./*"
       ]
     },
     "types": [
-      "jest"
+      "jest",
+      "node"
     ]
   },
   "include": [

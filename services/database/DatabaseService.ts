@@ -1,7 +1,8 @@
 import * as SQLite from 'expo-sqlite';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
-import { Task, Priority, Recurrence } from '../../types/task';
+import { Buffer } from 'buffer';
+import { Priority, Recurrence, Task } from '../../types/task';
 
 const DATABASE_NAME = 'taskflow.db';
 const ENCRYPTION_KEY_ALIAS = 'db_encryption_key';
@@ -112,13 +113,13 @@ export class DatabaseService {
     for (let i = 0; i < text.length; i++) {
       result += String.fromCharCode(text.charCodeAt(i) ^ this.encryptionKey.charCodeAt(i % this.encryptionKey.length));
     }
-    return btoa(result);
+    return Buffer.from(result, 'binary').toString('base64');
   }
 
   private decrypt(text: string): string {
     if (!text || !this.encryptionKey) return text;
     try {
-      const decoded = atob(text);
+      const decoded = Buffer.from(text, 'base64').toString('binary');
       let result = '';
       for (let i = 0; i < decoded.length; i++) {
         result += String.fromCharCode(decoded.charCodeAt(i) ^ this.encryptionKey.charCodeAt(i % this.encryptionKey.length));

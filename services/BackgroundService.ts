@@ -1,6 +1,7 @@
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { DatabaseService } from './database/DatabaseService';
 import { scheduleTaskReminder } from './notifications';
 import { processRecurringTasks } from './recurringTasks';
@@ -22,6 +23,13 @@ export class BackgroundService {
 
   async init() {
     this.defineTasks();
+    
+    // Skip registration in Expo Go as it doesn't support custom background modes on iOS
+    if (Constants.appOwnership === 'expo') {
+      console.warn('[Background] Skipping background task registration in Expo Go (not supported on iOS)');
+      return;
+    }
+
     await this.registerTasks();
   }
 

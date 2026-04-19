@@ -16,11 +16,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.taskflow.app",
-      "UIBackgroundModes": [
-        "fetch",
-        "remote-notification"
-      ],
       "infoPlist": {
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ],
         "NSUserNotificationsUsageDescription": "TaskFlow uses notifications to remind you about upcoming tasks and deadlines."
       }
     },

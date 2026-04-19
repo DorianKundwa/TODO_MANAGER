@@ -16,10 +16,24 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 // Mock expo-notifications
 jest.mock('expo-notifications', () => ({
-  scheduleNotificationAsync: jest.fn(),
-  cancelScheduledNotificationAsync: jest.fn(),
-  requestPermissionsAsync: jest.fn(),
-  getPermissionsAsync: jest.fn(),
+  scheduleNotificationAsync: jest.fn().mockResolvedValue('mock-notif-id'),
+  cancelScheduledNotificationAsync: jest.fn().mockResolvedValue(undefined),
+  requestPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
+  getPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
+  setNotificationHandler: jest.fn(),
+  setNotificationChannelAsync: jest.fn().mockResolvedValue(null),
+  AndroidImportance: {
+    HIGH: 4,
+    MAX: 5,
+  },
+  SchedulableTriggerInputTypes: {
+    DATE: 'date',
+  },
+}));
+
+// Mock expo-device
+jest.mock('expo-device', () => ({
+  isDevice: true,
 }));
 
 // Mock expo-haptics

@@ -76,6 +76,7 @@ export default function AddTaskScreen() {
       endTime,
       priority,
       recurrence,
+      parentTaskId: editingTask?.parentTaskId || null,
       reminder: {
         enabled: reminderEnabled,
         minutesBefore: reminderMinutes,

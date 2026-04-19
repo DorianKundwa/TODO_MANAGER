@@ -37,7 +37,7 @@ export default function RootLayout() {
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [processRecurring, setHasLoaded]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

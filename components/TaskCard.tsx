@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   Animated,
   Dimensions,
+  PanResponder,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Task, Priority } from '../types/task';
@@ -20,6 +21,7 @@ import { lightColors, darkColors } from '../theme/colors';
 import { RECURRENCE_CONFIG } from '../constants';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const SWIPE_THRESHOLD = -SCREEN_WIDTH * 0.4;
 
 interface TaskCardProps {
   task: Task;
@@ -30,6 +32,36 @@ export default function TaskCard({ task, onPress }: TaskCardProps) {
   const { toggleComplete, deleteTask, darkMode } = useTaskStore();
   const colors = darkMode ? darkColors : lightColors;
   const translateX = useRef(new Animated.Value(0)).current;
+
+  // PanResponder for swipe-to-delete
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only respond to horizontal swipes
+        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dy) < 10;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        // Only allow swiping to the left
+        if (gestureState.dx < 0) {
+          translateX.setValue(gestureState.dx);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx < SWIPE_THRESHOLD) {
+          // Complete the swipe and delete
+          handleSwipeDelete();
+        } else {
+          // Snap back to original position
+          Animated.spring(translateX, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 10,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
   // Priority color mapping
   const priorityColor = {
@@ -70,6 +102,7 @@ export default function TaskCard({ task, onPress }: TaskCardProps) {
       </View>
 
       <Animated.View
+        {...panResponder.panHandlers}
         style={[
           styles.card,
           {

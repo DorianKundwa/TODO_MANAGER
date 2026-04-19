@@ -43,14 +43,17 @@ export function processRecurringTasks(tasks: Task[]): Task[] {
         continue;
     }
 
-    // Check if a task with the same title and next due date already exists
+    // Determine the original task ID to track recurrence family
+    const parentId = task.parentTaskId || task.id;
+
+    // Check if a task from the same recurrence family and next due date already exists
     const alreadyExists = tasks.some(
-      (t) => t.title === task.title && t.dueDate === nextDueDate && !t.completed
+      (t) => (t.parentTaskId === parentId || t.id === parentId) && t.dueDate === nextDueDate && !t.completed
     );
 
     // Also check in the new tasks we're about to add
     const alreadyInNew = newTasks.some(
-      (t) => t.title === task.title && t.dueDate === nextDueDate
+      (t) => t.parentTaskId === parentId && t.dueDate === nextDueDate
     );
 
     if (!alreadyExists && !alreadyInNew) {
@@ -58,6 +61,7 @@ export function processRecurringTasks(tasks: Task[]): Task[] {
       const newTask: Task = {
         ...task,
         id: generateId(),
+        parentTaskId: parentId,
         dueDate: nextDueDate,
         completed: false,
         completedAt: null,

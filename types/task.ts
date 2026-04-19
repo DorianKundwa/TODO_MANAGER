@@ -51,6 +51,8 @@ export interface Task {
   createdAt: string;
   /** Notification identifier for cancellation */
   notificationId: string | null;
+  /** The ID of the original task if this is a recurring instance */
+  parentTaskId: string | null;
 }
 
 // Completion stats for the progress ring

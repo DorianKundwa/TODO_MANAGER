@@ -3,7 +3,7 @@
  * Selecting a date shows the tasks due on that day.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,13 +19,13 @@ import { Task } from '../types/task';
 export default function CalendarScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { darkMode, getMarkedDates, getTasksByDate } = useTaskStore();
+  const { darkMode, getMarkedDates, getTasksByDate, tasks } = useTaskStore();
   const colors = darkMode ? darkColors : lightColors;
 
   const today = getToday();
   const [selectedDate, setSelectedDate] = useState(today);
-  const markedDates = getMarkedDates();
-  const tasksForDate = getTasksByDate(selectedDate);
+  const markedDates = useMemo(() => getMarkedDates(), [tasks]);
+  const tasksForDate = useMemo(() => getTasksByDate(selectedDate), [tasks, selectedDate]);
 
   // Navigate to task detail
   const handleTaskPress = (task: Task) => {

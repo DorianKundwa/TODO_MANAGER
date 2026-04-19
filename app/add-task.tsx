@@ -60,6 +60,14 @@ export default function AddTaskScreen() {
       return;
     }
 
+    // Validate time range
+    if (startTime && endTime) {
+      if (endTime <= startTime) {
+        Alert.alert('Invalid Time', 'End time must be later than start time');
+        return;
+      }
+    }
+
     const taskData = {
       title: title.trim(),
       description: description.trim(),

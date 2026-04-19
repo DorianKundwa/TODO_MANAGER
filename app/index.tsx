@@ -3,7 +3,7 @@
  * This is the primary screen users interact with.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,11 +19,11 @@ import { Task } from '../types/task';
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { darkMode, getFilteredTasks, getTodayStats } = useTaskStore();
+  const { darkMode, getFilteredTasks, getTodayStats, tasks, filter, searchQuery } = useTaskStore();
   const colors = darkMode ? darkColors : lightColors;
 
-  const filteredTasks = getFilteredTasks();
-  const todayStats = getTodayStats();
+  const filteredTasks = useMemo(() => getFilteredTasks(), [tasks, filter, searchQuery]);
+  const todayStats = useMemo(() => getTodayStats(), [tasks]);
   const today = getToday();
 
   // Navigate to add-task screen

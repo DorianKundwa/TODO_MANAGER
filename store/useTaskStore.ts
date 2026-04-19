@@ -8,7 +8,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Task, Priority, Recurrence, FilterType, CompletionStats } from '../types/task';
-import { getToday, isToday, isFuture } from '../utils/dateHelpers';
+import { isToday, isFuture } from '../utils/dateHelpers';
 import { generateId } from '../utils/idGenerator';
 import { processRecurringTasks } from '../services/recurringTasks';
 import { scheduleTaskReminder, cancelTaskReminder } from '../services/notifications';
@@ -124,21 +124,27 @@ export const useTaskStore = create<TaskStore>()(
 
       /** Toggle a task's completion status */
       toggleComplete: (id) => {
-        set((state) => ({
-          tasks: state.tasks.map((t) => {
+        let shouldProcessRecurring = false;
+        
+        set((state) => {
+          const updatedTasks = state.tasks.map((t) => {
             if (t.id !== id) return t;
             const completed = !t.completed;
+            if (completed && t.recurrence !== Recurrence.NONE) {
+              shouldProcessRecurring = true;
+            }
             return {
               ...t,
               completed,
               completedAt: completed ? new Date().toISOString() : null,
             };
-          }),
-        }));
+          });
+          
+          return { tasks: updatedTasks };
+        });
 
-        // Process recurring tasks after completion
-        const task = get().tasks.find((t) => t.id === id);
-        if (task?.completed && task.recurrence !== Recurrence.NONE) {
+        // Process recurring tasks after completion if needed
+        if (shouldProcessRecurring) {
           get().processRecurring();
         }
       },
@@ -168,21 +174,20 @@ export const useTaskStore = create<TaskStore>()(
         const { tasks } = get();
         const newTasks = processRecurringTasks(tasks);
         if (newTasks.length > 0) {
-          set((state) => ({ tasks: [...newTasks, ...state.tasks] }));
-
           // Schedule notifications for new recurring tasks
-          newTasks.forEach((task) => {
-            if (task.reminder.enabled) {
-              scheduleTaskReminder(task).then((notifId) => {
-                if (notifId) {
-                  set((state) => ({
-                    tasks: state.tasks.map((t) =>
-                      t.id === task.id ? { ...t, notificationId: notifId } : t
-                    ),
-                  }));
-                }
-              });
-            }
+          // We do this first to avoid nested set calls if possible
+          Promise.all(
+            newTasks.map(async (task) => {
+              if (task.reminder.enabled) {
+                const notifId = await scheduleTaskReminder(task);
+                return { ...task, notificationId: notifId };
+              }
+              return task;
+            })
+          ).then((tasksWithNotifs) => {
+            set((state) => ({
+              tasks: [...tasksWithNotifs, ...state.tasks],
+            }));
           });
         }
       },
@@ -200,17 +205,17 @@ export const useTaskStore = create<TaskStore>()(
         // Apply filter
         switch (filter) {
           case 'today':
-            filtered = filtered.filter((t) => isToday(t.dueDate) && !t.completed);
+            filtered = filtered.filter((t) => isToday(t.dueDate));
             break;
           case 'upcoming':
-            filtered = filtered.filter((t) => isFuture(t.dueDate) && !t.completed);
+            filtered = filtered.filter((t) => isFuture(t.dueDate));
             break;
           case 'completed':
             filtered = filtered.filter((t) => t.completed);
             break;
           case 'all':
           default:
-            filtered = filtered.filter((t) => !t.completed);
+            // Show all tasks (completed and uncompleted)
             break;
         }
 

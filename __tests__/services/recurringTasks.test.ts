@@ -24,6 +24,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     reminder: { enabled: false, minutesBefore: 0, repeating: false },
     createdAt: new Date().toISOString(),
     notificationId: null,
+    parentTaskId: null,
     ...overrides,
   };
 }
@@ -69,7 +70,14 @@ describe('processRecurringTasks', () => {
   it('does not duplicate if next occurrence already exists', () => {
     const completedTask = makeTask({ id: 'id-1', completed: true, recurrence: Recurrence.DAILY });
     const nextDate = addToDate(TODAY, 1, 'days');
-    const existingNext = makeTask({ id: 'id-2', completed: false, dueDate: nextDate, recurrence: Recurrence.DAILY });
+    // Link the existing task to the same family via parentTaskId
+    const existingNext = makeTask({ 
+      id: 'id-2', 
+      completed: false, 
+      dueDate: nextDate, 
+      recurrence: Recurrence.DAILY,
+      parentTaskId: 'id-1'
+    });
     const newTasks = processRecurringTasks([completedTask, existingNext]);
     expect(newTasks.length).toBe(0);
   });

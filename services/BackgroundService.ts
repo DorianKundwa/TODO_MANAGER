@@ -46,7 +46,7 @@ export class BackgroundService {
         for (const task of upcomingTasks) {
           const notifId = await scheduleTaskReminder(task);
           if (notifId) {
-            await db.saveTask({ ...task, notificationId: notifId });
+            await db.saveTask({ ...task, notificationId: notifId }, 'pending_update');
           }
         }
 

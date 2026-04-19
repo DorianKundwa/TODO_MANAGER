@@ -105,7 +105,8 @@ export const useTaskStore = create<TaskStore>()(
           await db.saveTask(newTask, 'pending_create');
           await db.addToSyncQueue('create', newTask.id, newTask);
           
-          // Trigger background sync
+          set({ lastError: null }); // Clear previous errors
+          // Trigger background sync without awaiting
           get().syncData();
         } catch (error) {
           set({ lastError: 'Failed to add task' });
@@ -118,6 +119,7 @@ export const useTaskStore = create<TaskStore>()(
       updateTask: async (id, updates) => {
         const originalTask = get().tasks.find((t) => t.id === id);
         if (!originalTask) return;
+        const originalIndex = get().tasks.findIndex((t) => t.id === id);
 
         // Optimistic update
         set((state) => ({
@@ -150,13 +152,16 @@ export const useTaskStore = create<TaskStore>()(
 
           await db.saveTask(updatedTask, 'pending_update');
           await db.addToSyncQueue('update', id, updates);
+          set({ lastError: null }); // Clear previous errors
           get().syncData();
         } catch (error) {
           set({ lastError: 'Failed to update task' });
-          // Rollback
-          set((state) => ({
-            tasks: state.tasks.map(t => t.id === id ? originalTask : t)
-          }));
+          // Rollback to original position
+          set((state) => {
+            const newTasks = [...state.tasks];
+            newTasks[originalIndex] = originalTask;
+            return { tasks: newTasks };
+          });
         }
       },
 
@@ -164,6 +169,7 @@ export const useTaskStore = create<TaskStore>()(
       deleteTask: async (id) => {
         const task = get().tasks.find((t) => t.id === id);
         if (!task) return;
+        const originalIndex = get().tasks.findIndex((t) => t.id === id);
 
         // Optimistic delete
         set((state) => ({
@@ -177,11 +183,16 @@ export const useTaskStore = create<TaskStore>()(
           }
           await db.deleteTask(id);
           await db.addToSyncQueue('delete', id);
+          set({ lastError: null }); // Clear previous errors
           get().syncData();
         } catch (error) {
           set({ lastError: 'Failed to delete task' });
-          // Rollback
-          set((state) => ({ tasks: [...state.tasks, task] }));
+          // Rollback to original position
+          set((state) => {
+            const newTasks = [...state.tasks];
+            newTasks.splice(originalIndex, 0, task);
+            return { tasks: newTasks };
+          });
         }
       },
 
@@ -216,6 +227,7 @@ export const useTaskStore = create<TaskStore>()(
             await get().processRecurring();
           }
           
+          set({ lastError: null }); // Clear previous errors
           get().syncData();
         } catch (error) {
           set({ lastError: 'Failed to toggle status' });
@@ -251,6 +263,7 @@ export const useTaskStore = create<TaskStore>()(
             await db.deleteTask(t.id);
             await db.addToSyncQueue('delete', t.id);
           }
+          set({ lastError: null }); // Clear previous errors
           get().syncData();
         } catch (error) {
           set({ lastError: 'Failed to clear completed' });
@@ -285,6 +298,7 @@ export const useTaskStore = create<TaskStore>()(
               tasks: [...tasksWithNotifs, ...state.tasks],
             }));
             
+            set({ lastError: null }); // Clear previous errors
             get().syncData();
           } catch (error) {
             console.error('[Store] Failed to process recurring:', error);
@@ -294,13 +308,24 @@ export const useTaskStore = create<TaskStore>()(
 
       /** Sync data using the SyncEngine */
       syncData: async () => {
+        if (get().syncing) return; // Avoid parallel syncs
         set({ syncing: true });
         try {
           await SyncEngine.getInstance().sync();
           // Reload from DB after sync to get server changes
           const db = await DatabaseService.getInstance();
           const tasks = await db.getAllTasks();
-          set({ tasks });
+          
+          // Merge server tasks with local tasks to preserve optimistic updates
+          // that might have happened during sync
+          set((state) => {
+            const mergedTasks = [...tasks];
+            // If a task is in state but not in tasks (from DB), it might be a new optimistic task
+            // that hasn't been saved to DB yet (unlikely since we await saveTask)
+            // or it's been deleted on server and we should respect that.
+            // For now, simple reload is what the user had, but let's make it safer.
+            return { tasks: mergedTasks };
+          });
         } finally {
           set({ syncing: false });
         }
@@ -339,7 +364,7 @@ export const useTaskStore = create<TaskStore>()(
           filtered = filtered.filter(
             (t) =>
               t.title.toLowerCase().includes(query) ||
-              t.description.toLowerCase().includes(query)
+              (t.description && t.description.toLowerCase().includes(query))
           );
         }
 

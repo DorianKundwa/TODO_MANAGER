@@ -49,6 +49,8 @@ export interface Task {
   reminder: ReminderConfig;
   /** ISO timestamp of when the task was created */
   createdAt: string;
+  /** ISO timestamp of when the task was last updated */
+  updatedAt?: string;
   /** Notification identifier for cancellation */
   notificationId: string | null;
   /** The ID of the original task if this is a recurring instance */

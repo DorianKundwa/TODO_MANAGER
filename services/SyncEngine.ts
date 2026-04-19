@@ -36,6 +36,7 @@ export class SyncEngine {
       // 2. Fetch inbound changes from server
       await this.fetchInboundChanges(db);
       
+      await db.setLastSyncedAt(new Date().toISOString());
       await db.log('info', '[Sync] Sync completed successfully');
     } catch (error) {
       await db.log('error', '[Sync] Sync failed', error);
@@ -117,8 +118,8 @@ export class SyncEngine {
    * Conflict resolution strategy: Last-Write-Wins (LWW)
    */
   private resolveConflict(local: Task, server: Task): Task {
-    const localTime = new Date(local.createdAt).getTime(); // Should use an updatedAt field in real app
-    const serverTime = new Date(server.createdAt).getTime();
+    const localTime = local.updatedAt ? new Date(local.updatedAt).getTime() : new Date(local.createdAt).getTime();
+    const serverTime = server.updatedAt ? new Date(server.updatedAt).getTime() : new Date(server.createdAt).getTime();
     
     return serverTime >= localTime ? server : local;
   }

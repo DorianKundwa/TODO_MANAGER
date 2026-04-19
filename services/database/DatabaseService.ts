@@ -36,10 +36,11 @@ export class DatabaseService {
   private async ensureEncryptionKey() {
     let key = await SecureStore.getItemAsync(ENCRYPTION_KEY_ALIAS);
     if (!key) {
-      key = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        Math.random().toString(36).substring(2) + Date.now().toString()
-      );
+      // Use CSPRNG for key generation
+      const randomBytes = await Crypto.getRandomBytesAsync(32);
+      key = Array.from(randomBytes)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
       await SecureStore.setItemAsync(ENCRYPTION_KEY_ALIAS, key);
     }
     this.encryptionKey = key;
@@ -71,6 +72,11 @@ export class DatabaseService {
         lastSyncedAt TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS sync_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS sync_queue (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         action TEXT NOT NULL, -- 'create', 'update', 'delete'
@@ -93,17 +99,28 @@ export class DatabaseService {
   // --- Encryption Helpers ---
 
   private encrypt(text: string): string {
-    // In a real production app, we would use a more robust AES-GCM implementation.
-    // For this example, we'll simulate encryption using the secure key.
-    // Expo-crypto doesn't provide a direct symmetric encryption API yet (only digest/random).
-    // Usually, you'd use a library like react-native-aes-crypto or similar if not in managed Expo.
-    // For now, we'll store the sensitive data as is, but in a real app, this is where
-    // the AES encryption logic would go using the this.encryptionKey.
-    return text; 
+    if (!text || !this.encryptionKey) return text;
+    // Simple XOR encryption for demonstration since expo-crypto lacks symmetric AES.
+    // In production, a library like react-native-aes-crypto should be used.
+    let result = '';
+    for (let i = 0; i < text.length; i++) {
+      result += String.fromCharCode(text.charCodeAt(i) ^ this.encryptionKey.charCodeAt(i % this.encryptionKey.length));
+    }
+    return btoa(result);
   }
 
   private decrypt(text: string): string {
-    return text;
+    if (!text || !this.encryptionKey) return text;
+    try {
+      const decoded = atob(text);
+      let result = '';
+      for (let i = 0; i < decoded.length; i++) {
+        result += String.fromCharCode(decoded.charCodeAt(i) ^ this.encryptionKey.charCodeAt(i % this.encryptionKey.length));
+      }
+      return result;
+    } catch (e) {
+      return text; // Fallback for unencrypted data
+    }
   }
 
   // --- Task Operations ---
@@ -117,8 +134,8 @@ export class DatabaseService {
         id, title, description, dueDate, startTime, endTime, priority, 
         completed, completedAt, recurrence, parentTaskId, notificationId,
         reminder_enabled, reminder_minutesBefore, reminder_repeating,
-        createdAt, updatedAt, syncStatus
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        createdAt, updatedAt, syncStatus, lastSyncedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         task.id,
         this.encrypt(task.title),
@@ -137,7 +154,8 @@ export class DatabaseService {
         task.reminder.repeating ? 1 : 0,
         task.createdAt,
         now,
-        syncStatus
+        syncStatus,
+        syncStatus === 'synced' ? now : null
       ]
     );
   }
@@ -179,8 +197,22 @@ export class DatabaseService {
         repeating: row.reminder_repeating === 1,
       },
       createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
       syncStatus: row.syncStatus as any,
     };
+  }
+
+  // --- Sync Metadata ---
+
+  async getLastSyncedAt(): Promise<string | null> {
+    if (!this.db) throw new Error('Database not initialized');
+    const row = await this.db.getFirstAsync<any>('SELECT value FROM sync_metadata WHERE key = "last_synced_at"');
+    return row ? row.value : null;
+  }
+
+  async setLastSyncedAt(timestamp: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync('INSERT OR REPLACE INTO sync_metadata (key, value) VALUES ("last_synced_at", ?)', [timestamp]);
   }
 
   // --- Sync Queue Operations ---

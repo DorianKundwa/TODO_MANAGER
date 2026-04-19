@@ -273,6 +273,9 @@ export const useTaskStore = create<TaskStore>()(
 
       /** Generate new instances of completed recurring tasks */
       processRecurring: async () => {
+        if (!get().hasLoadedInitially) {
+          await get().initStore();
+        }
         const { tasks } = get();
         const newTasks = processRecurringTasks(tasks);
         
@@ -308,6 +311,9 @@ export const useTaskStore = create<TaskStore>()(
 
       /** Sync data using the SyncEngine */
       syncData: async () => {
+        if (!get().hasLoadedInitially) {
+          await get().initStore();
+        }
         if (get().syncing) return; // Avoid parallel syncs
         set({ syncing: true });
         try {

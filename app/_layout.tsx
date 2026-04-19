@@ -20,17 +20,22 @@ export default function RootLayout() {
   const colors = darkMode ? darkColors : lightColors;
 
   useEffect(() => {
-    // Initialize background services
-    BackgroundService.getInstance().init();
+    const initializeApp = async () => {
+      // Initialize background services
+      BackgroundService.getInstance().init();
 
-    // Load data from SQLite
-    initStore();
+      // Load data from SQLite
+      await initStore();
 
-    // Request notification permissions on first launch
-    requestNotificationPermissions();
+      // Request notification permissions on first launch
+      requestNotificationPermissions();
 
-    // Mark store as loaded
-    setHasLoaded();
+      // Process recurring tasks and sync
+      await processRecurring();
+      await syncData();
+    };
+
+    initializeApp();
 
     // Process recurring tasks and sync when app comes to foreground
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -40,14 +45,10 @@ export default function RootLayout() {
       }
     });
 
-    // Initial process and sync
-    processRecurring();
-    syncData();
-
     return () => {
       subscription.remove();
     };
-  }, [processRecurring, setHasLoaded, syncData]);
+  }, [initStore, processRecurring, syncData]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

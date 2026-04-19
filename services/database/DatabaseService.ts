@@ -8,27 +8,33 @@ const ENCRYPTION_KEY_ALIAS = 'db_encryption_key';
 
 export class DatabaseService {
   private static instance: DatabaseService;
+  private static initPromise: Promise<DatabaseService> | null = null;
   private db: SQLite.SQLiteDatabase | null = null;
   private encryptionKey: string | null = null;
 
   private constructor() {}
 
   static async getInstance(): Promise<DatabaseService> {
-    if (!DatabaseService.instance) {
-      DatabaseService.instance = new DatabaseService();
-      await DatabaseService.instance.init();
+    if (DatabaseService.initPromise) {
+      return DatabaseService.initPromise;
     }
-    return DatabaseService.instance;
+
+    const instance = new DatabaseService();
+    DatabaseService.instance = instance;
+    DatabaseService.initPromise = instance.init().then(() => instance);
+    return DatabaseService.initPromise;
   }
 
   private async init() {
     try {
-      this.db = await SQLite.openDatabaseAsync(DATABASE_NAME);
+      const sqliteDb = await SQLite.openDatabaseAsync(DATABASE_NAME);
+      this.db = sqliteDb;
       await this.ensureEncryptionKey();
       await this.createTables();
       console.log('[Database] Database initialized successfully');
     } catch (error) {
       console.error('[Database] Failed to initialize database:', error);
+      DatabaseService.initPromise = null; // Allow retry on failure
       throw error;
     }
   }

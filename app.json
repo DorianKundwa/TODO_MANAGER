@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "scheme": "taskflow",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -15,15 +15,23 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.taskflow.app"
+      "bundleIdentifier": "com.taskflow.app",
+      "infoPlist": {
+        "NSUserNotificationsUsageDescription": "TaskFlow uses notifications to remind you about upcoming tasks and deadlines."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F0F1A"
       },
-      "edgeToEdgeEnabled": true,
-      "package": "com.taskflow.app"
+      "package": "com.taskflow.app",
+      "permissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.SCHEDULE_EXACT_ALARM"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -35,7 +43,8 @@
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
-          "color": "#6C63FF"
+          "color": "#6C63FF",
+          "defaultChannel": "task-reminders"
         }
       ],
       "@react-native-community/datetimepicker",

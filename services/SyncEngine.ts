@@ -50,6 +50,12 @@ export class SyncEngine {
     if (queue.length === 0) return;
 
     for (const item of queue) {
+      const retryCount = item.retryCount || 0;
+      if (retryCount >= 5) {
+        await db.log('error', `[Sync] Max retries reached for item ${item.id}`, item);
+        continue;
+      }
+
       try {
         // Simulate server request
         // const response = await api.syncAction(item.action, item.taskId, JSON.parse(item.payload));
@@ -69,27 +75,51 @@ export class SyncEngine {
         }
       } catch (error) {
         console.error(`[Sync] Failed to sync item ${item.id}:`, error);
-        // Implement retry logic or mark as failed for manual intervention
+        // Increment retry count
+        await db.updateSyncQueueRetry(item.id, retryCount + 1);
+        await db.log('warn', `[Sync] Retry ${retryCount + 1} for item ${item.id}`, { error });
       }
     }
   }
 
   private async fetchInboundChanges(db: DatabaseService) {
     // This is where we would fetch data from the server
+    // const lastSyncedAt = await db.getLastSyncedAt();
     // const serverChanges = await api.getRecentChanges(lastSyncedAt);
     
-    // For each server change:
-    // 1. Check if local version exists
-    // 2. Resolve conflicts (Server-wins or Client-wins strategy)
-    // 3. Update local DB
+    // For simulation: assume no new server changes
+    const serverChanges: any[] = []; 
+    
+    for (const serverTask of serverChanges) {
+      const localTasks = await db.getAllTasks();
+      const localTask = localTasks.find(t => t.id === serverTask.id);
+      
+      if (!localTask) {
+        // Task doesn't exist locally, just create it
+        await db.saveTask(serverTask, 'synced');
+      } else {
+        // Task exists locally, check for conflicts
+        if (localTask.syncStatus === 'synced') {
+          // Local is already synced, just update with server version
+          await db.saveTask(serverTask, 'synced');
+        } else {
+          // Local has pending changes, resolve conflict
+          const resolvedTask = this.resolveConflict(localTask, serverTask);
+          await db.saveTask(resolvedTask, 'synced');
+          // If we resolved in favor of server or a merge, we should clear local queue
+          // In this simple version, we assume server-wins/last-write-wins
+        }
+      }
+    }
   }
 
   /**
-   * Simple conflict resolution: Server Wins (Default)
+   * Conflict resolution strategy: Last-Write-Wins (LWW)
    */
   private resolveConflict(local: Task, server: Task): Task {
-    // Logic to compare timestamps and decide which version to keep
-    // In a real app, we might ask the user or use last-write-wins.
-    return server;
+    const localTime = new Date(local.createdAt).getTime(); // Should use an updatedAt field in real app
+    const serverTime = new Date(server.createdAt).getTime();
+    
+    return serverTime >= localTime ? server : local;
   }
 }

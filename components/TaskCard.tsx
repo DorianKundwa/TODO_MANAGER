@@ -12,6 +12,7 @@ import {
   Animated,
   Dimensions,
   PanResponder,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Task, Priority } from '../types/task';
@@ -203,6 +204,13 @@ export default function TaskCard({ task, onPress }: TaskCardProps) {
 
           {/* Priority dot */}
           <View style={[styles.priorityDot, { backgroundColor: priorityColor }]} />
+          
+          {/* Sync Status Indicator */}
+          {task.syncStatus && task.syncStatus !== 'synced' && (
+            <View style={styles.syncIndicator} testID="task-sync-indicator">
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          )}
         </TouchableOpacity>
 
         {/* Quick delete button */}
@@ -299,6 +307,9 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+    marginLeft: 8,
+  },
+  syncIndicator: {
     marginLeft: 8,
   },
   deleteButton: {

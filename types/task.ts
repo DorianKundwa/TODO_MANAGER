@@ -53,6 +53,8 @@ export interface Task {
   notificationId: string | null;
   /** The ID of the original task if this is a recurring instance */
   parentTaskId: string | null;
+  /** Synchronization status: 'synced', 'pending_create', 'pending_update', 'pending_delete' */
+  syncStatus?: 'synced' | 'pending_create' | 'pending_update' | 'pending_delete';
 }
 
 // Completion stats for the progress ring

@@ -11,7 +11,7 @@ import TaskList from '../components/TaskList';
 import FloatingActionButton from '../components/FloatingActionButton';
 import ProgressRing from '../components/ProgressRing';
 import SearchBar from '../components/SearchBar';
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Animated } from 'react-native';
 import { useTaskStore } from '../store/useTaskStore';
 import { lightColors, darkColors } from '../theme/colors';
 import { getGreeting, getToday, getDayOfWeek, formatDate } from '../utils/dateHelpers';
@@ -20,12 +20,25 @@ import { Task } from '../types/task';
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { darkMode, getFilteredTasks, getTodayStats, tasks, filter, searchQuery, syncing } = useTaskStore();
+  const { darkMode, getFilteredTasks, getTodayStats, tasks, filter, searchQuery, syncing, lastError } = useTaskStore();
   const colors = darkMode ? darkColors : lightColors;
 
   const filteredTasks = useMemo(() => getFilteredTasks(), [tasks, filter, searchQuery]);
   const todayStats = useMemo(() => getTodayStats(), [tasks]);
   const today = getToday();
+
+  // Error message animation
+  const errorOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (lastError) {
+      Animated.sequence([
+        Animated.timing(errorOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.delay(3000),
+        Animated.timing(errorOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [lastError]);
 
   // Navigate to add-task screen
   const handleAddTask = () => {
@@ -107,6 +120,22 @@ export default function HomeScreen() {
         onTaskPress={handleTaskPress}
         ListHeaderComponent={ListHeader}
       />
+      
+      {/* Sync Status Overlay */}
+      {syncing && (
+        <View style={[styles.syncOverlay, { backgroundColor: colors.surface + 'CC' }]}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[styles.syncText, { color: colors.textPrimary }]}>Updating...</Text>
+        </View>
+      )}
+
+      {/* Error Toast */}
+      {lastError && (
+        <Animated.View style={[styles.errorToast, { backgroundColor: colors.error, opacity: errorOpacity }]}>
+          <Text style={styles.errorText}>{lastError}</Text>
+        </Animated.View>
+      )}
+
       <FloatingActionButton onPress={handleAddTask} />
     </View>
   );
@@ -172,5 +201,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 8,
+  },
+  syncOverlay: {
+    position: 'absolute',
+    bottom: 100,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    gap: 8,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  syncText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  errorToast: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+  },
+  errorText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });

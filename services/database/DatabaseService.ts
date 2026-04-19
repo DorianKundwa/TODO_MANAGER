@@ -76,6 +76,7 @@ export class DatabaseService {
         action TEXT NOT NULL, -- 'create', 'update', 'delete'
         taskId TEXT NOT NULL,
         payload TEXT,
+        retryCount INTEGER DEFAULT 0,
         createdAt TEXT NOT NULL
       );
 
@@ -178,6 +179,7 @@ export class DatabaseService {
         repeating: row.reminder_repeating === 1,
       },
       createdAt: row.createdAt,
+      syncStatus: row.syncStatus as any,
     };
   }
 
@@ -200,6 +202,11 @@ export class DatabaseService {
   async removeFromSyncQueue(id: number): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
     await this.db.runAsync('DELETE FROM sync_queue WHERE id = ?', [id]);
+  }
+
+  async updateSyncQueueRetry(id: number, count: number): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync('UPDATE sync_queue SET retryCount = ? WHERE id = ?', [count, id]);
   }
 
   // --- Logging ---

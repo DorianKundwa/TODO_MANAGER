@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -151,6 +152,14 @@ export default function TaskDetailScreen() {
                 <View style={[styles.statusBadge, { backgroundColor: colors.success + '20' }]}>
                   <Text style={[styles.statusText, { color: colors.success }]}>
                     Completed
+                  </Text>
+                </View>
+              )}
+              {task.syncStatus && task.syncStatus !== 'synced' && (
+                <View style={[styles.statusBadge, { backgroundColor: colors.primary + '20' }]}>
+                  <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 4 }} />
+                  <Text style={[styles.statusText, { color: colors.primary }]}>
+                    Syncing...
                   </Text>
                 </View>
               )}

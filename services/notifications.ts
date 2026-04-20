@@ -6,6 +6,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { Task } from '../types/task';
 
 // Configure how notifications appear when app is in foreground
@@ -26,6 +27,13 @@ Notifications.setNotificationHandler({
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (!Device.isDevice) {
     console.log('[Notifications] Must use physical device for push notifications');
+    return false;
+  }
+
+  // Remote notifications are not supported in Expo Go on Android since SDK 53.
+  // Skip permission requests and channel setup to avoid errors.
+  if (Constants.appOwnership === 'expo' && Platform.OS === 'android') {
+    console.warn('[Notifications] Skipping remote notification setup in Expo Go on Android.');
     return false;
   }
 
